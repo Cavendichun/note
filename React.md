@@ -88,7 +88,7 @@ diff 阶段采取的性能优化措施如下：
 
 - compeleteWork 阶段的 subtreeFlags 为 commit 阶段的性能优化做了准备，如果某个 fiber 的 flags 和 subtreeFlags 都为 NoFlag 的话，果断跳过子树遍历；如果某个节点是Placement的，证明整棵子树都是新的，就只对根做一次插入操作就可以了
 
-## Hooks的实现原理
+## 4. Hooks的实现原理
 
 每个fiber的数据结构上都一个memoizedState字段，在类组件中，该字段存储的是状态对象；在函数组件中，该字段存储的是组件内使用的所有的hook。
 
@@ -127,3 +127,11 @@ hook的存储形式是一条单项链表，链表的顺序就是组件内hook的
 - 存储空间小，碎片化的hook通过指针连接起来，memoziedState只保存链表头，让函数组件比类组件轻量许多
 
 - baseState和memoizedState的配合让状态的更新变得可暂停、可中断，契合fiber设计理念（在update按顺序执行过程中，baseState不会发生变化，memoizedState记录中间值）
+
+## 5. setState/dispatch是同步还是异步的?
+
+首先，setState/dispatch不能理解成传统意义上的同步异步，但从表现上看确实类似异步，原因如下：
+
+- 调用每次dispatch会生成一个update，这个update本身是同步的
+
+- 因为react是调度特点是并发批处理的（并发原理是快速在不同优先级之间切换，类似js的事件循环，批处理原理是scheduleUpdateOnFiber会收集一个时间切片里的所有update，安排一次渲染），所以看起来像没有立即执行一样
