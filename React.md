@@ -135,3 +135,25 @@ hook的存储形式是一条单项链表，链表的顺序就是组件内hook的
 - 调用每次dispatch会生成一个update，这个update本身是同步的
 
 - 因为react是调度特点是并发批处理的（并发原理是快速在不同优先级之间切换，类似js的事件循环，批处理原理是scheduleUpdateOnFiber会收集一个时间切片里的所有update，安排一次渲染），所以看起来像没有立即执行一样
+
+## 有哪几个生命周期被标记为不安全？为什么？有什么替代方案吗？
+
+一共有三个生命周期被标记为不安全，分别是：
+
+- componentWillMount
+ 
+- componentWillUpdate
+ 
+- componentWillReceiveProps
+ 
+他们的执行时间分别是：
+
+- componentWillMount：reconciler阶段，打Placement Flag的时候
+
+- componentWillUpdate：reconciler阶段，打Update Flag的时候
+
+- componentWillReceiveProps：reconciler阶段，reconcileChidFibers的更新props的时候
+
+因为并发渲染的原因，导致这三个生命周期可能会被反复的执行，不符合fiber架构的逻辑
+
+
