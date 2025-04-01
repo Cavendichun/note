@@ -46,7 +46,7 @@ diff 发生在 reconcile 阶段，具体过程如下
 
   - 把 children 传入 reconcileChildren 中，开始 diff 过程：
 
-    - 先判断当前的 fiber.alternate 是否存在，如果不存在，说明这个节点是新创建的，走 mountChildFibers 流程，生成子节点树，给根节点打 Placement Flag
+    - 先判断当前的 fiber.alternate 是否存在，如果不存在，说明这个节点是新创建的，走 mountChildFibers 流程，生成子节点，不打Flag
 
     - 如果 fiber.alternate 存在，证明是节点的 update 过程，走 reconcileChildFibers 流程，判断是否复用子 fiber，判断如下：
 
@@ -71,6 +71,8 @@ diff 发生在 reconcile 阶段，具体过程如下
   - 如果当前 fiber 有 sibling，就让 sibling 进入 workLoop 流程
 
   - 根据每个 fiber 节点不同的 Tag 类型，生成、修改、复用之前的 dom，并保存在 stateNode 中，不做真实的 domApi 操作
+    
+  - 把新增的fiber节点打Placement标记（这个新增指的是父fiber不存在的那种；父fiber存在的情况在beginWork阶段处理过了）
 
   - 将每个 fiber 的 Flag 冒泡到父 fiber 的 subtreeFlags 上，这样 commit 阶段就可以根据这个标识选择是否跳过整棵子树的遍历
 
@@ -84,4 +86,4 @@ diff 阶段采取的性能优化措施如下：
 
 - beginWork 阶段判断 key、type、props 如果相等，果断复用子树，跳过后续对比
 
-- compeleteWork 阶段的 subtreeFlags 为 commit 阶段的性能优化做了准备，如果某个 fiber 的 flags 和 subtreeFlags 都为 NoFlag 的话，果断跳过子树遍历
+- compeleteWork 阶段的 subtreeFlags 为 commit 阶段的性能优化做了准备，如果某个 fiber 的 flags 和 subtreeFlags 都为 NoFlag 的话，果断跳过子树遍历；如果某个节点是Placement的，证明整棵子树都是新的，就只对根做一次插入操作就可以了
