@@ -24,7 +24,7 @@ react 是计算驱动的，是纯运行时的，本质是纯函数，视图与�
 
 diff 发生在 reconcile 阶段，具体过程如下
 
-- 用户触发更新，dispatch 会生成一个新的 update，通过 enqueueUpdate 将其添加到对应 hook 的 queue 队列中，然后调用 scheduleUpdateOnFiber 等待调度
+- 用户触发更新，dispatch 计算完成后会生成一个新的 update，通过 enqueueUpdate 将其添加到对应 hook 的 queue 队列中，然后调用 scheduleUpdateOnFiber 等待调度
 
 - scheduleUpdateOnFiber 通过一些列优先级判断后，开始更新流程
 
@@ -46,7 +46,7 @@ diff 发生在 reconcile 阶段，具体过程如下
 
   - 把 children 传入 reconcileChildren 中，开始 diff 过程：
 
-    - 先判断当前的 fiber.alternate 是否存在，如果不存在，说明这个节点是新创建的，走 mountChildFibers 流程，生成子节点，不打Flag
+    - 先判断当前的 fiber.alternate 是否存在，如果不存在，说明这个节点是新创建的，走 mountChildFibers 流程，生成子节点，不打 Flag
 
     - 如果 fiber.alternate 存在，证明是节点的 update 过程，走 reconcileChildFibers 流程，判断是否复用子 fiber，判断如下：
 
@@ -71,8 +71,7 @@ diff 发生在 reconcile 阶段，具体过程如下
   - 如果当前 fiber 有 sibling，就让 sibling 进入 workLoop 流程
 
   - 根据每个 fiber 节点不同的 Tag 类型，生成、修改、复用之前的 dom，并保存在 stateNode 中，不做真实的 domApi 操作
-    
-  - 把新增的fiber节点打Placement标记（这个新增指的是父fiber不存在的那种；父fiber存在的情况在beginWork阶段处理过了）
+  - 把新增的 fiber 节点打 Placement 标记（这个新增指的是父 fiber 不存在的那种；父 fiber 存在的情况在 beginWork 阶段处理过了）
 
   - 将每个 fiber 的 Flag 冒泡到父 fiber 的 subtreeFlags 上，这样 commit 阶段就可以根据这个标识选择是否跳过整棵子树的遍历
 
@@ -86,74 +85,91 @@ diff 阶段采取的性能优化措施如下：
 
 - beginWork 阶段判断 key、type、props 如果相等，果断复用子树，跳过后续对比
 
-- compeleteWork 阶段的 subtreeFlags 为 commit 阶段的性能优化做了准备，如果某个 fiber 的 flags 和 subtreeFlags 都为 NoFlag 的话，果断跳过子树遍历；如果某个节点是Placement的，证明整棵子树都是新的，就只对根做一次插入操作就可以了
+- compeleteWork 阶段的 subtreeFlags 为 commit 阶段的性能优化做了准备，如果某个 fiber 的 flags 和 subtreeFlags 都为 NoFlag 的话，果断跳过子树遍历；如果某个节点是 Placement 的，证明整棵子树都是新的，就只对根做一次插入操作就可以了
 
-## 4. Hooks的实现原理
+## 4. Hooks 的实现原理
 
-每个fiber的数据结构上都一个memoizedState字段，在类组件中，该字段存储的是状态对象；在函数组件中，该字段存储的是组件内使用的所有的hook。
+每个 fiber 的数据结构上都一个 memoizedState 字段，在类组件中，该字段存储的是状态对象；在函数组件中，该字段存储的是组件内使用的所有的 hook。
 
-hook的存储形式是一条单项链表，链表的顺序就是组件内hook的调用顺序，fiber的memoziedState字段指向这个链表的头，因为只储存了链表头的地址，所以节省比类组件节省内存占用。
+hook 的存储形式是一条单向链表，链表的顺序就是组件内 hook 的调用顺序，fiber 的 memoziedState 字段指向这个链表的头，因为只储存了链表头的地址，所以节省比类组件节省内存占用。
 
-又因为是一条链表，每次渲染的时候是按顺序取值的，所以react要求不能条件调用hook，不然数量或顺序就会和上一次不同，就会导致取值错乱。
+又因为是一条链表，每次渲染的时候是按顺序取值的，所以 react 要求不能条件调用 hook，不然数量或顺序就会和上一次不同，就会导致取值错乱。
 
-每个hook通过闭包的形式，保存了当前的fiber指向currentlyRenderingFiber，例如useState的dispatch是可以赋值给一个全局变量在组件外部使用的，因为currentlyRenderingFiber保持了fiber的指向；所以react不允许在组件外初始化hooks，因为无法绑定currentlyRenderingFiber
+每个 hook 通过闭包的形式，保存了当前的 fiber 指向 currentlyRenderingFiber，例如 useState 的 dispatch 是可以赋值给一个全局变量在组件外部使用的，因为 currentlyRenderingFiber 保持了 fiber 的指向；所以 react 不允许在组件外初始化 hooks，因为无法绑定 currentlyRenderingFiber
 
-以最常见的useState举例，hook的数据结构上有几个关键字段：
+以最常见的 useState 举例，hook 的数据结构上有几个关键字段：
 
-- initialState：初始化hook的值
+- initialState：初始化 hook 的值
 
-- baseState: 上一次hook状态更新后的值
+- baseState: update 过程中的临时值
 
-- memoizedState: 更新过程中的状态，有可能是中间态
+- memoizedState: 所有 update 执行完成后的最终值
 
-- queue：dispatch的更新队列
+- updateQueue：dispatch 的更新队列
 
 解释一下以上名词：
 
-- 组件mount的时候，调用useState(action)，initialState赋值为action，如果action是函数，将函数的执行结果赋值到baseState，否则将action直接赋值给baseState
+- 组件 mount 的时候，调用 useState(action)，initialState 赋值为 action，如果 action 是函数，将函数的执行结果赋值到 memoziedState，否则将 action 直接赋值给 memoziedState
 
-- 用户触发dispatch更新，可能会连续触发很多次，每次触发dispatch后：
+- 用户触发 dispatch 更新，可能会连续触发很多次，每次触发 dispatch 后：
 
-  - dispatch内部会生成一个update
-    
-  - 通过enqueueUpdate加入到当前hook的queue.pending中（queue.pending是一个环形链表，pending指向链表尾部，链表尾部指向头部，这样每次添加一个update的时候，就不需要找到链表的最后一个了，直接在pending指针添加，在修改下next指向就可以了）
-    
-  - 通知scheduleUpdateOnFiber等待调度
-    
-  - 更新开始后，hook会依次执行queue.pending中的update，每次的执行结果保存在memoizedState中，上一个update的结果，是下一个update的入参，都执行完成后，清空queue.pending，把memoziedState赋值给baseState
- 
-从以上的描述可以看出，hook的性能好，主要体现在以下两个方面：
+  - dispatch 内部会生成一个 update
+  - 通过 enqueueUpdate 加入到当前 hook 的 updateQueue.pending 中（queue.pending 是一个环形链表，pending 指向链表尾部，链表尾部指向头部，这样每次添加一个 update 的时候，就不需要找到链表的最后一个了，直接在 pending 指针添加，在修改下 next 指向就可以了）
+  - 通知 scheduleUpdateOnFiber 等待调度
+  - 更新开始后，hook 会依次执行 updateQueue 中的 update，每次的执行结果保存在 baseState 中，上一个 update 的结果，是下一个 update 的入参，都执行完成后，清空 updateQueue，把最终结果赋值给 memoizedState
 
-- 存储空间小，碎片化的hook通过指针连接起来，memoziedState只保存链表头，让函数组件比类组件轻量许多
+从以上的描述可以看出，hook 的性能好，主要体现在以下两个方面：
 
-- baseState和memoizedState的配合让状态的更新变得可暂停、可中断，契合fiber设计理念（在update按顺序执行过程中，baseState不会发生变化，memoizedState记录中间值）
+- 存储空间小，碎片化的 hook 通过指针连接起来，memoziedState 只保存链表头，让函数组件比类组件轻量许多
 
-## 5. setState/dispatch是同步还是异步的?
+- baseState 和 memoizedState 的配合让状态的更新变得可暂停、可中断，契合 fiber 设计理念（在 update 按顺序执行过程中，memoziedState 不会发生变化，baseState 记录中间值）
 
-首先，setState/dispatch不能理解成传统意义上的同步异步，但从表现上看确实类似异步，原因如下：
+## 5. setState/dispatch 是同步还是异步的?
 
-- 调用每次dispatch会生成一个update，这个update本身是同步的
+首先，setState/dispatch 不能理解成传统意义上的同步异步，但从表现上看确实类似异步，原因如下：
 
-- 因为react是调度特点是并发批处理的（并发原理是快速在不同优先级之间切换，类似js的事件循环，批处理原理是scheduleUpdateOnFiber会收集一个时间切片里的所有update，安排一次渲染），所以看起来像没有立即执行一样
+- 调用每次 dispatch 会生成一个 update 加入 hook 的 updateQueue 中，这个 update 本身是同步的
+
+- 因为 react 是调度特点是并发批处理的，（并发类似 js 的事件循环，不同优先级之间切换）调用 scheduleUpdateOnFiber 后不会立即进行 reconcile，所以看起来像是异步
+
+## 6. 为什么调用 useState 的 dispatch 后，立刻打印 state，得到的还是上一次的值？
+
+因为调用 dispatch 只是将一个 update 加入了 hook 的 updateQueue 中，还没有立即执行，需要等待调度，下一次 renderWithHook 的时候，才会计算出最新值，在这之前，memoizedState 都是旧值。
+
+## 7. 为什么更新渲染阶段，useState 的值不会被还原？
+
+react 执行 useState 的时候会判断组件是不是初次渲染，判断的依据是 fiber.alternate 是否为空。组件初次渲染和更新渲染，useState 看似调用了同一个方法，实际是来自两个不同的池子里。
+
+初次渲染的时候，useState 做了这些事：
+
+- 判断 initial 是否为函数，如果函数，memoziedState 赋值为运行结果，否则赋值为 action 的值
+
+- 创建一个 dispatch 方法，用闭包的形式保存了当前的 fiber 和 hook
+
+- 返回[memoizedState, dispatch]
+
+用户触发了更新后，hook 的 updateQueue 中会有 update，下一次更新渲染的时候，做了这些事：
+
+- 取出 hook 的 updateQueue，通过 processUpdateQueue，用 memoizedState 作为初始值，计算出最终结果，赋值给 memoizedState
+
+- 返回[memoizedState, dispatch]
 
 ## 有哪几个生命周期被标记为不安全？为什么？有什么替代方案吗？
 
 一共有三个生命周期被标记为不安全，分别是：
 
 - componentWillMount
- 
+
 - componentWillUpdate
- 
+
 - componentWillReceiveProps
- 
+
 他们的执行时间分别是：
 
-- componentWillMount：reconciler阶段，打Placement Flag的时候
+- componentWillMount：reconciler 阶段，打 Placement Flag 的时候
 
-- componentWillUpdate：reconciler阶段，打Update Flag的时候
+- componentWillUpdate：reconciler 阶段，打 Update Flag 的时候
 
-- componentWillReceiveProps：reconciler阶段，reconcileChidFibers的更新props的时候
+- componentWillReceiveProps：reconciler 阶段，reconcileChidFibers 的更新 props 的时候
 
-因为并发渲染的原因，导致这三个生命周期可能会被反复的执行，不符合fiber架构的逻辑
-
-
+因为并发渲染的原因，导致这三个生命周期可能会被反复的执行，不符合 fiber 架构的逻辑
