@@ -87,3 +87,43 @@ diff 阶段采取的性能优化措施如下：
 - beginWork 阶段判断 key、type、props 如果相等，果断复用子树，跳过后续对比
 
 - compeleteWork 阶段的 subtreeFlags 为 commit 阶段的性能优化做了准备，如果某个 fiber 的 flags 和 subtreeFlags 都为 NoFlag 的话，果断跳过子树遍历；如果某个节点是Placement的，证明整棵子树都是新的，就只对根做一次插入操作就可以了
+
+## Hooks的实现原理
+
+每个fiber的数据结构上都一个memoizedState字段，在类组件中，该字段存储的是状态对象；在函数组件中，该字段存储的是组件内使用的所有的hook。
+
+hook的存储形式是一条单项链表，链表的顺序就是组件内hook的调用顺序，fiber的memoziedState字段指向这个链表的头，因为只储存了链表头的地址，所以节省比类组件节省内存占用。
+
+又因为是一条链表，每次渲染的时候是按顺序取值的，所以react要求不能条件调用hook，不然数量或顺序就会和上一次不同，就会导致取值错乱。
+
+每个hook通过闭包的形式，保存了当前的fiber指向currentlyRenderingFiber，例如useState的dispatch是可以赋值给一个全局变量在组件外部使用的，因为currentlyRenderingFiber保持了fiber的指向；所以react不允许在组件外初始化hooks，因为无法绑定currentlyRenderingFiber
+
+以最常见的useState举例，hook的数据结构上有几个关键字段：
+
+- initialState：初始化hook的值
+
+- baseState: 上一次hook状态更新后的值
+
+- memoizedState: 更新过程中的状态，有可能是中间态
+
+- queue：dispatch的更新队列
+
+解释一下以上名词：
+
+- 组件mount的时候，调用useState(action)，initialState赋值为action，如果action是函数，将函数的执行结果赋值到baseState，否则将action直接赋值给baseState
+
+- 用户触发dispatch更新，可能会连续触发很多次，每次触发dispatch后：
+
+  - dispatch内部会生成一个update
+    
+  - 通过enqueueUpdate加入到当前hook的queue.pending中（queue.pending是一个环形链表，pending指向链表尾部，链表尾部指向头部，这样每次添加一个update的时候，就不需要找到链表的最后一个了，直接在pending指针添加，在修改下next指向就可以了）
+    
+  - 通知scheduleUpdateOnFiber等待调度
+    
+  - 更新开始后，hook会依次执行queue.pending中的update，每次的执行结果保存在memoizedState中，上一个update的结果，是下一个update的入参，都执行完成后，清空queue.pending，把memoziedState赋值给baseState
+ 
+从以上的描述可以看出，hook的性能好，主要体现在以下两个方面：
+
+- 存储空间小，碎片化的hook通过指针连接起来，memoziedState只保存链表头，让函数组件比类组件轻量许多
+
+- baseState和memoizedState的配合让状态的更新变得可暂停、可中断，契合fiber设计理念（在update按顺序执行过程中，baseState不会发生变化，memoizedState记录中间值）
