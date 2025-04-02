@@ -138,9 +138,11 @@ hook 的存储形式是一条单向链表，链表的顺序就是组件内 hook 
 
 ## 7. 为什么更新渲染阶段，useState 的值不会被还原？
 
-react 执行 useState 的时候会判断组件是不是初次渲染，判断的依据是 fiber.alternate 是否为空。组件初次渲染和更新渲染，useState 看似调用了同一个方法，实际是来自两个不同的池子里。
+react 执行 useState 的时候会判断组件是不是初次渲染，判断的依据是 fiber.alternate 是否为空。组件初次渲染和更新渲染，useState 看似调用了同一个方法，实际在内部是两套不同的实现：
 
 初次渲染的时候，useState 做了这些事：
+
+- 调用mountState
 
 - 判断 initial 是否为函数，如果函数，memoziedState 赋值为运行结果，否则赋值为 action 的值
 
@@ -149,6 +151,8 @@ react 执行 useState 的时候会判断组件是不是初次渲染，判断的�
 - 返回[memoizedState, dispatch]
 
 用户触发了更新后，hook 的 updateQueue 中会有 update，下一次更新渲染的时候，做了这些事：
+
+- 调用updateState
 
 - 取出 hook 的 updateQueue，通过 processUpdateQueue，用 memoizedState 作为初始值，计算出最终结果，赋值给 memoizedState
 
