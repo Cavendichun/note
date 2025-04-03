@@ -142,7 +142,7 @@ react 执行 useState 的时候会判断组件是不是初次渲染，判断的�
 
 初次渲染的时候，useState 做了这些事：
 
-- 调用mountState
+- 调用 mountState
 
 - 判断 initial 是否为函数，如果函数，memoziedState 赋值为运行结果，否则赋值为 action 的值
 
@@ -152,28 +152,42 @@ react 执行 useState 的时候会判断组件是不是初次渲染，判断的�
 
 用户触发了更新后，hook 的 updateQueue 中会有 update，下一次更新渲染的时候，做了这些事：
 
-- 调用updateState
+- 调用 updateState
 
 - 取出 hook 的 updateQueue，通过 processUpdateQueue，用 memoizedState 作为初始值，计算出最终结果，赋值给 memoizedState
 
 - 返回[memoizedState, dispatch]
 
-## 有哪几个生命周期被标记为不安全？为什么？有什么替代方案吗？
+## 8. React 为什么要自定义事件系统？
 
-一共有三个生命周期被标记为不安全，分别是：
+- 不同的浏览器对事件流的处理不一定相同，比如执行顺序，api 等，react 希望抹平其中的差异
 
-- componentWillMount
+- react 希望将事件统一绑定在 container 上，通过事件委托的方式进行管理，但由于事件没有绑定在真实 dom 上，所以需要手动模拟事件流
 
-- componentWillUpdate
+## 9. React 的合成事件是什么？
 
-- componentWillReceiveProps
+- 节点上绑定的事件可能由多个原生事件触发，比如 onChange 事件，在不同的 dom 元素上，对应不同的原生事件，比如 keyUp、blur、input 等
 
-他们的执行时间分别是：
+## 10. React 的事件系统是怎样的？
 
-- componentWillMount：reconciler 阶段，打 Placement Flag 的时候
+首先，先介绍一下原生 dom 的事件流，当点击一个按钮的时候，浏览器会从 document 开始一路下钻到目标元素（button）上，这个过程称为“事件捕获”，当到达了目标元素后，点击事件会从目标元素原路返回到 document，这个过程称为（事件冒泡）
 
-- componentWillUpdate：reconciler 阶段，打 Update Flag 的时候
+- 在事件捕获过程中，如果路径上的元素使用了 addEventListener('click', () => {}, true)的话，回调函数会在下钻过程中被触发
 
-- componentWillReceiveProps：reconciler 阶段，reconcileChidFibers 的更新 props 的时候
+- 在事件冒泡过程中，如果路径上的元素使用了 addEventListener('click', () => {})的话，回调函数会在回溯过程中被触发
 
-因为并发渲染的原因，导致这三个生命周期可能会被反复的执行，不符合 fiber 架构的逻辑
+react 将所有的事件注册到 container 上，比如 containerElement.addEventListener('click', () => {})，如果这样话，会有一些问题：
+
+- 还是上面点击按钮的场景，如果在回溯路径的某个 dom 元素上，用户对该节点使用了原生的 eventListener，并使用 stopPropagation 阻止事件传播的话，会导致 button 的点击无效，因为 container 上绑定的事件无法触发，这显然是不符合用户预期的
+
+针对以上问题，react 在 container 上，对大部分事件同时进行了捕获和冒泡两种监听（除了一些只有冒泡阶段的事件，比如 blur，scroll 等），保证事件能够被触发，所以 react 的事件系统流程是这样的：
+
+- 在 createRoot 的时候，向 container 注册全部事件的捕获和冒泡，回调为 dispatchEvent
+
+- 点击某个按钮时，触发 dispatchEvent，event.target 为触发动作的元素，找到这个节点对应的 fiber
+
+- 从 fiber 一路向上回溯，把路径上所有 fiber 的 onClick 用 push 方法收集进一个队列中；把 onClickCapture 用 unshift 收集到一个队列中
+
+- 回溯到 container 后，先按顺序执行 onClickCapture 的数组，在按顺序执行 onClick 数组，这样执行的顺序就和原生的先捕获再冒泡的行为一致了
+
+- 合成事件中的 event 是 react 对 event 对象进行的扩展，如果用户需要组织事件冒泡，react 会将 event 对象上的\_stopPropagation 设置为 true，再调用原生的 stopPropagation 阻止掉后续传播，执行下一个 onClick 之前，判断\_stopPropagation 是否为 true，如果是，就不继续执行了
